@@ -31,7 +31,7 @@ class RSScenes extends RSObject {
   }
 
   async load() {
-    const q = this.db.query(this.db.collection(this.db.instance, "scenes"));
+    const q = this.db.query(this.db.collection(this.db.instance, "scenes"), this.db.orderBy("name"));
     this.unsubscribe = this.db.onSnapshot(q, (snapshot) => {
       var scenes = {};
       snapshot.forEach((doc) => {

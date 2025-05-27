@@ -2,7 +2,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-app.js";
 import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-analytics.js";
 import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-auth.js";
-import { getFirestore, doc, collection, setDoc, addDoc, getDocs, deleteDoc, query, where, onSnapshot } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-firestore.js";
+import { getFirestore, doc, collection, setDoc, addDoc, getDocs, deleteDoc, query, where, onSnapshot, orderBy } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-firestore.js";
 import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-storage.js";
 
 // TODO: Add SDKs for Firebase products that you want to use
@@ -45,7 +45,8 @@ export const firebase = {
     deleteDoc: deleteDoc,
     query: query,
     where: where,
-    onSnapshot: onSnapshot  
+    orderBy: orderBy,
+    onSnapshot: onSnapshot
   },
   storage: {
     instance: storage,

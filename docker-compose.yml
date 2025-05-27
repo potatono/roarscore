@@ -1,43 +1,44 @@
 
 services:
-    roarscore-service:
+    roarscore-poc-service:
+        profiles:
+          - roarscore-poc-service
         build:
           context: .
           dockerfile: ./Dockerfile
-        container_name: roarscore-service
-        hostname: roarscore-service
+        container_name: roarscore-poc-service
+        hostname: roarscore-poc-service
         volumes:
           - .:/usr/local/roarscore
           - ./conf/mediamtx:/usr/local/mediamtx/conf
           - ./log:/usr/local/mediamtx/log
           - ./data:/usr/local/mediamtx/data
-        #network_mode: host
         ports:
           - "8554:8554"
           - "8000:8000"
           - "8001:8001"
           - "8889:8889"
           - "8189:8189/udp"
-    roarscore-web:
+    roarscore-poc-web:
         image: nginx:latest
-        container_name: roarscore-web
-        hostname: roarscore-web
+        container_name: roarscore-poc-web
+        hostname: roarscore-poc-web
         ports:
           - "5003:80"
         volumes:
           - ./public:/usr/share/nginx/html
           - ./data:/usr/share/nginx/html/data
         environment:
-          - NGINX_HOST=dev.roarscore.ai
+          - NGINX_HOST=poc.roarscore.ai
           - NGINX_PORT=80
-    roarscore-tunnel:
+    roarscore-poc-tunnel:
         image: cloudflare/cloudflared:latest
-        container_name: roarscore-tunnel
-        hostname: roarscore-tunnel
+        container_name: roarscore-poc-tunnel
+        hostname: roarscore-poc-tunnel
         command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
         environment:
           - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
-          - TUNNEL_HOSTNAME=dev.roarscore.ai
+          - TUNNEL_HOSTNAME=poc.roarscore.ai
           - TUNNEL_PORT=5003
         depends_on:
-          - roarscore-web
+          - roarscore-poc-web
