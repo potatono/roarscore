@@ -29,6 +29,7 @@ class RSViz extends RSObject {
     await this.loadData(scene);
     this.video.src = await this.createDownloadUrl(scene.audienceVideo);
     this.timeSeries.clear();
+    if (this.smoothie) this.smoothie.stop();
 
     if (this.contextVideo) {
       if (scene.contextVideo) {
@@ -85,25 +86,58 @@ class RSViz extends RSObject {
   computeLayout() {
     var lo = this.lo || {};
 
-    lo.videoX = lo.buffer;
-    lo.videoY = lo.buffer + lo.navBarHeight;
-    lo.videoWidth = lo.width * 0.5 - lo.buffer * 2;
-    lo.videoHeight = lo.videoWidth / 1.777 + lo.titleHeight;
+    if (lo.width < 1024) {
+      lo.videoX = lo.buffer;
+      lo.videoY = lo.buffer + lo.navBarHeight;
+      lo.videoWidth = lo.width - lo.buffer * 2;
+      lo.videoHeight = lo.videoWidth / 1.777 + lo.titleHeight;
 
-    lo.breakdownX = lo.videoX + lo.videoWidth + lo.buffer;
-    lo.breakdownY = lo.videoY;
-    lo.breakdownWidth = lo.width * 0.5 - lo.buffer;
-    lo.breakdownHeight = lo.videoHeight;
+      lo.breakdownX = lo.buffer;
+      lo.breakdownY = lo.videoY + lo.videoHeight + lo.buffer;
+      lo.breakdownWidth = lo.width - lo.buffer;
+      lo.breakdownHeight = lo.videoHeight;
 
-    lo.graphX = lo.buffer;
-    lo.graphY = lo.videoY + lo.videoHeight + lo.buffer;
-    lo.graphWidth = lo.videoWidth;
-    lo.graphHeight = lo.height - lo.videoHeight - lo.buffer;
+      lo.graphX = lo.buffer;
+      lo.graphY = lo.breakdownY + lo.videoHeight + lo.buffer;
+      lo.graphWidth = lo.videoWidth;
+      lo.graphHeight = lo.videoHeight;
 
-    lo.contextX = lo.breakdownX;
-    lo.contextY = lo.graphY;
-    lo.contextWidth = lo.breakdownWidth;
-    lo.contextHeight = lo.graphHeight;
+      lo.contextX = lo.buffer;
+      lo.contextY = lo.graphY + lo.graphHeight + lo.buffer;
+      lo.contextWidth = lo.videoWidth;
+      lo.contextHeight = lo.videoHeight;
+
+      lo.isMobile = true;
+      lo.windowPosition = "absolute";
+      lo.disableResize = true;
+      lo.disableMove = true;
+    }
+    else {
+      lo.videoX = lo.buffer;
+      lo.videoY = lo.buffer + lo.navBarHeight;
+      lo.videoWidth = lo.width * 0.5 - lo.buffer * 2;
+      lo.videoHeight = lo.videoWidth / 1.777 + lo.titleHeight;
+
+      lo.breakdownX = lo.videoX + lo.videoWidth + lo.buffer;
+      lo.breakdownY = lo.videoY;
+      lo.breakdownWidth = lo.width * 0.5 - lo.buffer;
+      lo.breakdownHeight = lo.videoHeight;
+
+      lo.graphX = lo.buffer;
+      lo.graphY = lo.videoY + lo.videoHeight + lo.buffer;
+      lo.graphWidth = lo.videoWidth;
+      lo.graphHeight = lo.height - lo.videoHeight - lo.buffer;
+
+      lo.contextX = lo.breakdownX;
+      lo.contextY = lo.graphY;
+      lo.contextWidth = lo.breakdownWidth;
+      lo.contextHeight = lo.graphHeight;
+
+      lo.isMobile = false;
+      lo.windowPosition = "fixed";
+      lo.disableResize = false;
+      lo.disableMove = false;
+    }
 
     lo.jumboX = lo.contextX;
     lo.jumboY = lo.contextY;
@@ -199,11 +233,21 @@ class RSViz extends RSObject {
     var grouped = {};
     var key;
 
+    var avgPeoplePerSecond =
+      this.data.length / this.data[this.data.length - 1].time;
+    var people = 0;
+
     for (var row of data) {
-      key = row.emotions[0].name;
-      grouped[key] = grouped[key] || { emotion: key, count: 0, score: 0 };
-      grouped[key].count++;
-      grouped[key].score += row.emotions[0].score * 100;
+      if (row.emotions[0].score == 0) continue;
+      people++;
+
+      for (var emotion of row.emotions) {
+        if (emotion.confidence < 0.5 || emotion.score == 0) continue;
+        key = emotion.name;
+        grouped[key] = grouped[key] || { emotion: key, count: 0, score: 0 };
+        grouped[key].count += emotion.confidence;
+        grouped[key].score += emotion.score * 100;
+      }
     }
 
     var keys = Object.keys(grouped).sort(
@@ -211,6 +255,14 @@ class RSViz extends RSObject {
     );
     var result = {};
     result.groupedData = keys.map((k) => grouped[k]);
+    result.posScore = result.groupedData.reduce(
+      (tot, row) => (row.score > 0 ? tot + row.score : tot),
+      0
+    );
+    result.negScore = result.groupedData.reduce(
+      (tot, row) => (row.score < 0 ? tot + row.score : tot),
+      0
+    );
     result.totalScore = result.groupedData.reduce(
       (tot, row) => tot + row.score,
       0
@@ -219,10 +271,26 @@ class RSViz extends RSObject {
       (tot, row) => tot + row.count,
       0
     );
-    result.total = (result.totalScore / result.totalCount) * 20;
-    if (result.total > 2000) result.total = 2000;
-    else if (result.total < -2000) result.total = -2000;
+
+    var multiplier = Math.min(
+      10,
+      Math.max(3, (people / avgPeoplePerSecond) * 10)
+    );
+
+    result.total = (result.totalScore / result.totalCount) * multiplier;
+    if (result.total > 1000) result.total = 1000;
+    else if (result.total < -1000) result.total = -1000;
     else if (isNaN(result.total)) result.total = 0;
+
+    result.posTotal = (result.posScore / result.totalCount) * multiplier;
+    if (result.posTotal > 1000) result.posTotal = 1000;
+    else if (result.posTotal < -1000) result.posTotal = -1000;
+    else if (isNaN(result.posTotal)) result.posTotal = 0;
+
+    result.negTotal = (result.negScore / result.totalCount) * multiplier;
+    if (result.negTotal > 1000) result.negTotal = 1000;
+    else if (result.negTotal < -1000) result.negTotal = -1000;
+    else if (isNaN(result.negTotal)) result.negTotal = 0;
 
     return result;
   }
@@ -231,6 +299,8 @@ class RSViz extends RSObject {
     var result = this.makeGroups(this.paintData);
     this.groupedData = result.groupedData;
     this.total = result.total;
+    this.posTotal = result.posTotal;
+    this.negTotal = result.negTotal;
     this.totalCount = result.totalCount;
     this.totalScore = result.totalScore;
   }
@@ -240,6 +310,8 @@ class RSViz extends RSObject {
     this.history.push({
       time: this.lastMediaTime,
       score: this.total,
+      posScore: this.posTotal,
+      negScore: this.negTotal
     });
 
     if (this.history.length > this.HISTORY_LENGTH) this.history.shift();
@@ -251,8 +323,8 @@ class RSViz extends RSObject {
     //    max = Math.max(point.score, max);
     //}
     //
-    max = 2000;
-    min = -2000;
+    max = 1000;
+    min = -1000;
 
     this.history.forEach(
       (point) => (point.plot = (point.score - min) / (max - min))
@@ -285,7 +357,10 @@ class RSViz extends RSObject {
       var centerY = y + h / 2;
       var innerR = 1;
       var outerR = h / 2;
-      var hue = 64 + row.emotions[0].score * 64;
+      var hueOffset = row.emotions[0].score * 64;
+      if (hueOffset < 0) hueOffset = Math.max(hueOffset, -64);
+      else hueOffset = Math.min(hueOffset, 64);
+      var hue = 64 + hueOffset;
 
       var gradient = ctx.createRadialGradient(
         centerX,
@@ -326,9 +401,16 @@ class RSViz extends RSObject {
     var point = this.history[this.history.length - 1];
     var lastPoint = this.history[this.history.length - 2];
 
-    if (point.score === lastPoint.score) return;
+    if (this.lastGraphUpdate && 
+        Date.now() - this.lastGraphUpdate < 1250 && 
+        point.score == lastPoint.score
+    ) return;
+
+    this.lastGraphUpdate = Date.now();
 
     this.timeSeries.append(Date.now(), point.score);
+    this.posTimeSeries.append(Date.now(), point.posScore);
+    this.negTimeSeries.append(Date.now(), point.negScore);
   }
 
   paintJumbo() {
@@ -384,7 +466,10 @@ class RSViz extends RSObject {
       if (!row.emotion || !row.score || !(row.emotion in this.radarDataMap))
         continue;
       var idx = this.radarDataMap[row.emotion];
-      this.radarChart.data.datasets[0].data[idx] = Math.abs(row.score);
+      this.radarChart.data.datasets[0].data[idx] = Math.min(
+        1000,
+        Math.abs(row.score)
+      );
     }
     this.radarChart.update();
   }
@@ -407,6 +492,9 @@ class RSViz extends RSObject {
           width: lo.videoWidth,
           height: lo.videoHeight,
           childrenContainerStyleOverrides: { padding: 0 },
+          disableMove: lo.disableMove,
+          disableResize: lo.disableResize,
+          windowStyleOverrides: { position: `${lo.windowPosition}` }
         },
         div(
           {
@@ -486,6 +574,9 @@ class RSViz extends RSObject {
           width: lo.breakdownWidth,
           height: lo.breakdownHeight,
           childrenContainerStyleOverrides: { padding: 0 },
+          disableMove: lo.disableMove,
+          disableResize: lo.disableResize,
+          windowStyleOverrides: { position: `${lo.windowPosition}` }
         },
         div({ id: "breakdown" })
       )
@@ -508,6 +599,9 @@ class RSViz extends RSObject {
           width: lo.radarWidth,
           height: lo.radarHeight,
           childrenContainerStyleOverrides: { padding: 0 },
+          disableMove: lo.disableMove,
+          disableResize: lo.disableResize,
+          windowStyleOverrides: { position: `${lo.windowPosition}` }
         },
         div(
           canvas({
@@ -525,11 +619,23 @@ class RSViz extends RSObject {
   setupRadarChart() {
     if (!this.radar || !this.data || !this.profile) return;
     var ctx = this.radar.getContext("2d");
-    var init = this.getRadarInit();
+
+    var labels = [
+      "Amusement",
+      "Excitement",
+      "Interest",
+      "Joy",
+      "Satisfaction",
+      "Disappointment",
+      "Boredom",
+      "Sadness",
+      "Anger",
+      "Fear",
+    ];
 
     this.radarDataMap = {};
-    for (var i = 0; i < init.length; i++) {
-      this.radarDataMap[init[i].label] = i;
+    for (var i = 0; i < labels.length; i++) {
+      this.radarDataMap[labels[i]] = i;
     }
 
     if (this.radarChart) this.radarChart.destroy();
@@ -537,18 +643,18 @@ class RSViz extends RSObject {
     this.radarChart = new Chart(ctx, {
       type: "radar",
       data: {
-        labels: init.map((emotion) => emotion.label),
+        labels: labels,
         datasets: [
           {
             label: "T=0",
-            data: init.map(() => 0),
+            data: labels.map(() => 0),
             fill: true,
-            backgroundColor: "rgba(255, 99, 132, 0.2)",
-            borderColor: "rgb(255, 99, 132)",
-            pointBackgroundColor: "rgb(255, 99, 132)",
+            backgroundColor: "rgba(0, 0, 255, 0.2)",
+            borderColor: "rgb(0, 0, 255)",
+            pointBackgroundColor: "rgb(0, 0, 255)",
             pointBorderColor: "#fff",
             pointHoverBackgroundColor: "#fff",
-            pointHoverBorderColor: "rgb(255, 99, 132)",
+            pointHoverBorderColor: "rgb(0, 0, 255)",
           },
         ],
       },
@@ -563,7 +669,13 @@ class RSViz extends RSObject {
           r: {
             beginAtZero: true,
             suggestedMin: 0,
-            suggestedMax: 100,
+            suggestedMax: 1000,
+            pointLabels: {
+              font: {
+                size: 16,
+                family: "Arial"
+              },
+            },
           },
         },
       },
@@ -571,41 +683,41 @@ class RSViz extends RSObject {
     this.radarChart.update();
   }
 
-  getRadarInit() {
-    if (!this.data || !this.profile) return [];
+  //   getRadarInit() {
+  //     if (!this.data || !this.profile) return [];
 
-    var axes = {};
-    var topScore = 0;
+  //     var axes = {};
+  //     var topScore = 0;
 
-    // Iterate over the data and sum the absolute scores for each emotion
-    for (var row of this.data) {
-      for (var emotion of row.emotions) {
-        if (emotion.name in this.profile.emotions) {
-          axes[emotion.name] = axes[emotion.name] || {
-            label: emotion.name,
-            max: 0,
-            total: 0,
-          };
-          axes[emotion.name].total += Math.abs(emotion.score);
-          axes[emotion.name].max = Math.max(
-            axes[emotion.name].max,
-            Math.abs(emotion.score)
-          );
-        }
-      }
-    }
+  //     // Iterate over the data and sum the absolute scores for each emotion
+  //     for (var row of this.data) {
+  //       for (var emotion of row.emotions) {
+  //         if (emotion.name in this.profile.emotions) {
+  //           axes[emotion.name] = axes[emotion.name] || {
+  //             label: emotion.name,
+  //             max: 0,
+  //             total: 0,
+  //           };
+  //           axes[emotion.name].total += Math.abs(emotion.score);
+  //           axes[emotion.name].max = Math.max(
+  //             axes[emotion.name].max,
+  //             Math.abs(emotion.score)
+  //           );
+  //         }
+  //       }
+  //     }
 
-    // Sort the axes by score
-    var sortedKeys = Object.keys(axes).sort((a, b) => axes[b] - axes[a]);
+  //     // Sort the axes by score
+  //     var sortedKeys = Object.keys(axes).sort((a, b) => axes[b] - axes[a]);
 
-    // Take the top 8 emotions
-    var topEmotions = sortedKeys.slice(0, 8);
+  //     // Take the top 8 emotions
+  //     var topEmotions = sortedKeys.slice(0, 8);
 
-    // Filter out any emotions that have a max score of 0
-    topEmotions = topEmotions.filter((emotion) => axes[emotion].max > 0.5);
+  //     // Filter out any emotions that have a max score of 0
+  //     topEmotions = topEmotions.filter((emotion) => axes[emotion].max > 0.5);
 
-    return topEmotions.map((emotion) => axes[emotion]);
-  }
+  //     return topEmotions.map((emotion) => axes[emotion]);
+  //   }
 
   showGraphWindow() {
     let lo = this.lo;
@@ -621,6 +733,9 @@ class RSViz extends RSObject {
           width: lo.graphWidth,
           height: lo.graphHeight,
           childrenContainerStyleOverrides: { padding: 0 },
+          disableMove: lo.disableMove,
+          disableResize: lo.disableResize,
+          windowStyleOverrides: { position: `${lo.windowPosition}` }
         },
         div(
           span(
@@ -646,29 +761,48 @@ class RSViz extends RSObject {
     this.graph = document.getElementById("graph");
     this.smoothie = new SmoothieChart({
       interpolation: "bezier",
+      minValue: -1000,
+      maxValue: 1000,
       grid: {
-        strokeStyle: "rgb(125, 0, 0)",
-        fillStyle: "rgb(60, 0, 0)",
+        strokeStyle: "rgb(200, 200, 200)",
+        fillStyle: "rgb(255,255,255)",
         lineWidth: 1,
         millisPerLine: 1000,
-        verticalSections: 6,
+        verticalSections: 4,
       },
       labels: {
-        fillStyle: "rgb(255, 255, 0)",
-        fontSize: 24,
+        fillStyle: "rgb(0, 0, 0)",
+        strokeStyle: "rgb(255, 255, 0)",
+        fontFamily: "Arial",
+        fontSize: 16,
         precision: 0,
-        showIntermediateLabels: false,
+        showIntermediateLabels: true,
       },
     });
 
     this.smoothie.streamTo(this.graph, 1000);
     window.setTimeout(() => this.smoothie.stop(), 10);
     this.timeSeries = new TimeSeries();
+    this.posTimeSeries = new TimeSeries();
+    this.negTimeSeries = new TimeSeries();
+
     this.smoothie.addTimeSeries(this.timeSeries, {
-      strokeStyle: "rgb(0, 255, 0)",
-      fillStyle: "rgba(0, 255, 0, 0.4)",
+      strokeStyle: "rgb(0, 0, 255)",
+      fillStyle: "rgba(0,0,255, 0.4)",
       lineWidth: 3,
     });
+
+    this.smoothie.addTimeSeries(this.posTimeSeries, {
+      strokeStyle: "rgb(0, 255, 0, 0.4)",
+      fillStyle: "rgba(0, 255, 0, 0.0)",
+      lineWidth: 3,
+    });
+    this.smoothie.addTimeSeries(this.negTimeSeries, {
+      strokeStyle: "rgb(255, 0, 0, 0.4)",
+      fillStyle: "rgba(255, 0, 0, 0.0)",
+      lineWidth: 3,
+    });
+
   }
 
   showJumboWindow() {
@@ -685,6 +819,9 @@ class RSViz extends RSObject {
           width: lo.jumboWidth,
           height: lo.jumboHeight,
           childrenContainerStyleOverrides: { padding: 0 },
+          disableMove: lo.disableMove,
+          disableResize: lo.disableResize,
+          windowStyleOverrides: { position: `${lo.windowPosition}` }
         },
         div(
           span(
@@ -737,6 +874,9 @@ class RSViz extends RSObject {
           width: lo.contextWidth,
           height: lo.contextHeight,
           childrenContainerStyleOverrides: { padding: 0 },
+          disableMove: lo.disableMove,
+          disableResize: lo.disableResize,
+          windowStyleOverrides: { position: `${lo.windowPosition}` }
         },
         div(
           video({
